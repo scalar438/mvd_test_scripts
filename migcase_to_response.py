@@ -68,7 +68,7 @@ def process_file(path, options: argparse.Namespace):
     departure_data = None
     with zipfile.ZipFile(path) as rep_archive:
         for file in rep_archive.filelist:
-            print(file.filename.encode("cp437").decode("cp866"))
+            print("Current file: " + file.filename.encode("cp437").decode("cp866"))
 
             if file.filename.lower().endswith(".xml"):
                 if 'response' in file.filename:
@@ -92,6 +92,9 @@ def process_file(path, options: argparse.Namespace):
         prefix = 'response_error_'
         response_template = response_template_error
 
+    print('Arrival data: ' + str(arrival_data))
+    print('Departure data: ' + str(departure_data))
+
     for data in [arrival_data, departure_data]:
         if data is not None:
             template_body = response_template.format(request_id = data[1],
@@ -100,12 +103,11 @@ def process_file(path, options: argparse.Namespace):
                     employee_id=data[4])
             
             if options.pack_zip:
-                print(prefix + data[-1] + '.zip')
-                with zipfile.ZipFile(prefix + data[-1] + '.zip', "w") as z:
-                    z.writestr('response_' + data[-1] + '.xml', template_body)
+                with zipfile.ZipFile(prefix + data[-1] + '.zip', "w") as zip_response:
+                    zip_response.writestr('response_' + data[-1] + '.xml', template_body)
             else:
-                with open(prefix + data[-1] + '.xml', 'wt') as f:
-                    f.write(template_body)
+                with open(prefix + data[-1] + '.xml', 'wt') as file_response:
+                    file_response.write(template_body)
     
     print('Answers has been generated')
 
