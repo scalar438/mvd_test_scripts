@@ -94,6 +94,14 @@ def process_file(path, options: argparse.Namespace):
 
     print('Arrival data: ' + str(arrival_data))
     print('Departure data: ' + str(departure_data))
+    
+    base_path = os.path.curdir
+    try:
+        if options.out_dir:
+            os.makedirs(options.out_dir)
+            base_path = options.out_dir
+    except:
+        print('Can\'t create directories for path {0}. Using a current directory for a path'.format(options.out_dir))
 
     for data in [arrival_data, departure_data]:
         if data is not None:
@@ -102,19 +110,21 @@ def process_file(path, options: argparse.Namespace):
                     uid=data[3],
                     employee_id=data[4])
             
+            base_filename = os.path.join(base_path, prefix + data[-1])
+
             if options.pack_zip:
-                with zipfile.ZipFile(prefix + data[-1] + '.zip', "w") as zip_response:
+                with zipfile.ZipFile(base_filename + '.zip', "w") as zip_response:
                     zip_response.writestr('response_' + data[-1] + '.xml', template_body)
             else:
-                with open(prefix + data[-1] + '.xml', 'wt') as file_response:
+                with open(base_filename + '.xml', 'wt') as file_response:
                     file_response.write(template_body)
     
     print('Answers has been generated')
 
 def main():
     parser = argparse.ArgumentParser(description='Parse the archive and generate answers for the reports')
-    parser.add_argument('--parse_arrival', required=False, help='Try to find a parse an arrival file in the archive', action='store_true')
-    parser.add_argument('--parse_departure', required=False, help='Try to find a parse an arrival file in the archive', action='store_true')
+    parser.add_argument('--parse_arrival', required=False, help='Try to find and parse an arrival file in the archive', action='store_true')
+    parser.add_argument('--parse_departure', required=False, help='Try to find and parse a departure file in the archive', action='store_true')
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--gen_success', action='store_true')

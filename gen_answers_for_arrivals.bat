@@ -1,1 +1,1 @@
-migcase_to_response.py --gen_success --parse_arrival --filename %1
+migcase_to_response.py --gen_success --parse_arrival --filename --pack_zip %1
