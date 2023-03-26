@@ -53,6 +53,8 @@ def get_data_from_file(s: str, filename: str):
     uid = root.find('core:uid', ns).text
     date = root.find('core:date', ns).text
 
+    filename = os.path.splitext(filename)[0]
+
     return (date, request_id, supplier_info, uid, employee_id, filename)
 
 def is_arrival(filename: str):
@@ -92,11 +94,18 @@ def process_file(path, options: argparse.Namespace):
 
     for data in [arrival_data, departure_data]:
         if data is not None:
-            with open(prefix + data[-1], 'wt') as f:
-                f.write(response_template.format(request_id = data[1],
+            template_body = response_template.format(request_id = data[1],
                     supplier_info=data[2],
                     uid=data[3],
-                    employee_id=data[4]))
+                    employee_id=data[4])
+            
+            if options.pack_zip:
+                print(prefix + data[-1] + '.zip')
+                with zipfile.ZipFile(prefix + data[-1] + '.zip', "w") as z:
+                    z.writestr('response_' + data[-1] + '.xml', template_body)
+            else:
+                with open(prefix + data[-1] + '.xml', 'wt') as f:
+                    f.write(template_body)
     
     print('Answers has been generated')
 
@@ -110,6 +119,8 @@ def main():
     group.add_argument('--gen_fail', action='store_true')
 
     parser.add_argument('--filename', action='store', required=True)
+    parser.add_argument('--out_dir', action='store', required=False)
+    parser.add_argument('--pack_zip', action='store_true', required=False)
 
     args = parser.parse_args()
 
