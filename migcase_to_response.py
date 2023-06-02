@@ -4,8 +4,9 @@ import xml.etree.ElementTree as ET
 import os
 import argparse
 import zipfile
+import enum
 
-response_template_success = '''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+response_template_success_migcase = '''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <ns2:response xmlns:ns2="http://umms.fms.gov.ru/hotel/hotel-response" xmlns="http://www.w3.org/2000/09/xmldsig#" schemaVersion="1.0">
     <ns2:requestId>{request_id}</ns2:requestId>
     <ns2:entityType>MigCase</ns2:entityType>
@@ -17,7 +18,7 @@ response_template_success = '''<?xml version="1.0" encoding="UTF-8" standalone="
 </ns2:response>
 '''
 
-response_template_error = '''
+response_template_error_migcase = '''
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <response xmlns="http://umms.fms.gov.ru/hotel/hotel-response" schemaVersion="1.0">
     <requestId>{request_id}</requestId>
@@ -28,6 +29,76 @@ response_template_error = '''
         <errorMsg>Error text: {employee_id}</errorMsg>
     </error>
 </response>
+'''
+
+response_template_error_unregcase = '''<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<ns2:response xmlns:ns2="http://umms.fms.gov.ru/hotel/hotel-response" xmlns="http://www.w3.org/2000/09/xmldsig#" xmlns:ns3="http://umms.fms.gov.ru/replication/core" schemaVersion="1.0">
+	<ns2:requestId>{request_id}</ns2:requestId>
+	<ns2:entityType>UnregMigCase</ns2:entityType>
+	<ns2:error>
+		<ns2:externalSystemId>{supplier_info}</ns2:externalSystemId>
+		<ns2:externalCaseId>{uid}</ns2:externalCaseId>
+		<ns2:errorMsg>ru.gov.fms.umms.services.core.BusinessException: Сохранение невозможно. В базе данных обнаружен полный дубликат:{employee_id}</ns2:errorMsg>
+	</ns2:error>
+</ns2:response>
+'''
+
+response_template_success_unregcase = '''<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<ns2:response xmlns:ns2="http://umms.fms.gov.ru/hotel/hotel-response" xmlns="http://www.w3.org/2000/09/xmldsig#" xmlns:ns3="http://umms.fms.gov.ru/replication/core" schemaVersion="1.0">
+	<ns2:requestId>{request_id}</ns2:requestId>
+	<ns2:entityType>UnregMigCase</ns2:entityType>
+	<ns2:success>
+		<ns2:notificationNumber>02/440-001/19/000177</ns2:notificationNumber>
+		<ns2:externalSystemId>{supplier_info}</ns2:externalSystemId>
+		<ns2:externalCaseId>{uid}</ns2:externalCaseId>
+		<ns2:ummsId>{employee_id}</ns2:ummsId>
+	</ns2:success>
+</ns2:response>
+'''
+
+response_template_success_form5 = '''<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<ns2:response xmlns:ns2="http://umms.fms.gov.ru/hotel/hotel-response" 
+              xmlns="http://www.w3.org/2000/09/xmldsig#" 
+              xmlns:ns3="http://umms.fms.gov.ru/replication/core" 
+              schemaVersion="1.0">
+    <ns2:requestId>{request_id}</ns2:requestId>
+    <ns2:entityType>RegCase</ns2:entityType>
+    <ns2:success>
+        <ns2:externalSystemId>{supplier_info}</ns2:externalSystemId>
+        <ns2:externalCaseId>{uid}</ns2:externalCaseId>
+        <ns2:ummsId>{employee_id}</ns2:ummsId>
+    </ns2:success>
+    <ns2:ummsVersion>
+        <ns3:app>2021.5.0.37</ns3:app>
+        <ns3:db>21.10.01</ns3:db>
+        <ns3:dict>21.10.01</ns3:dict>
+        <ns3:fias>16.04.2021</ns3:fias>
+        <ns3:gid>91</ns3:gid>
+        <ns3:domain>domain1</ns3:domain>
+    </ns2:ummsVersion>
+</ns2:response>
+'''
+
+response_template_error_form5 = '''<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<ns2:response xmlns:ns2="http://umms.fms.gov.ru/hotel/hotel-response" 
+              xmlns="http://www.w3.org/2000/09/xmldsig#" 
+              xmlns:ns3="http://umms.fms.gov.ru/replication/core" schemaVersion="1.0">
+    <ns2:requestId>{request_id}</ns2:requestId>
+    <ns2:entityType>RegCase</ns2:entityType>
+    <ns2:error>
+        <ns2:externalSystemId>{supplier_info}</ns2:externalSystemId>
+        <ns2:externalCaseId>{uid}</ns2:externalCaseId>
+        <ns2:errorMsg>Для категории поставщика («Гостиницы») загрузка данных указанного типа не допустима. {employee_id}</ns2:errorMsg>
+    </ns2:error>
+    <ns2:ummsVersion>
+        <ns3:app>2021.5.0.31</ns3:app>
+        <ns3:db>21.10.01</ns3:db>
+        <ns3:dict>21.10.01</ns3:dict>
+        <ns3:fias>16.04.2021</ns3:fias>
+        <ns3:gid>91</ns3:gid>
+        <ns3:domain>domain1</ns3:domain>
+    </ns2:ummsVersion>
+</ns2:response>
 '''
 
 def get_data_from_file(s: str, filename: str):
@@ -57,11 +128,20 @@ def get_data_from_file(s: str, filename: str):
 
     return (date, request_id, supplier_info, uid, employee_id, filename)
 
-def is_arrival(filename: str):
-    return ("MigCase_" in filename) or (('Form' in filename) and ('Unreg' not in filename))
+class FileType(enum.Enum):
+    ForeignerArrival = 1
+    ForeignerDeparture = 2
+    CitizenArrival = 3
+    CitizenDeparture = 4
 
-def is_departure(filename: str):
-    return 'Unreg' in filename
+def type_by_name(filename: str):
+    if ("MigCase_" in filename):
+        return FileType.ForeignerArrival
+    if ('Form' in filename) and ('Unreg' not in filename):
+        return FileType.CitizenArrival
+    if 'Case' in filename and 'Unreg' in filename:
+        return FileType.ForeignerDeparture
+    return FileType.CitizenDeparture
 
 def process_file(path, options: argparse.Namespace):
     arrival_data = None
@@ -76,21 +156,44 @@ def process_file(path, options: argparse.Namespace):
 
                 file_data = rep_archive.read(file.filename)
 
-                if is_arrival(file.filename) and options.parse_arrival:
-                    data = get_data_from_file(file_data, os.path.basename(file.filename))
+                cur_type = type_by_name(file.filename)
+
+                data = get_data_from_file(file_data, os.path.basename(file.filename))
+
+                if options.parse_arrival and (cur_type == FileType.CitizenArrival or cur_type == FileType.ForeignerArrival):
                     if arrival_data is None or arrival_data[0] < data[0]:
                         arrival_data = data
+                    
+                    if cur_type == FileType.CitizenArrival:
+                        if options.gen_success:
+                            response_template = response_template_success_form5
+                        else:
+                            response_template = response_template_error_form5
+                    else:
+                        if options.gen_success:
+                            response_template = response_template_success_migcase
+                        else:
+                            response_template = response_template_error_migcase
 
-                if is_departure(file.filename) and options.parse_departure:
-                    data = get_data_from_file(file_data, os.path.basename(file.filename))                    
+                elif options.parse_departure and (cur_type == FileType.CitizenDeparture or cur_type == FileType.ForeignerDeparture):
                     if departure_data is None or departure_data[0] < data[0]:
-                            departure_data = data
+                        departure_data = data
+                    if cur_type == FileType.CitizenDeparture:
+                        if options.gen_success:
+                            response_template = response_template_success_form5
+                        else:
+                            response_template = response_template_error_form5
+                    else:
+                        if options.gen_success:
+                            response_template = response_template_success_unregcase
+                        else:
+                            response_template = response_template_error_unregcase
     if options.gen_success:
         prefix = 'response_success_'
-        response_template = response_template_success
+        response_template = response_template_success_migcase
     else:
         prefix = 'response_error_'
-        response_template = response_template_error
+        response_template = response_template_error_migcase
 
     print('Arrival data: ' + str(arrival_data))
     print('Departure data: ' + str(departure_data))
@@ -123,8 +226,10 @@ def process_file(path, options: argparse.Namespace):
 
 def main():
     parser = argparse.ArgumentParser(description='Parse the archive and generate answers for the reports')
-    parser.add_argument('--parse_arrival', required=False, help='Try to find and parse an arrival file in the archive', action='store_true')
-    parser.add_argument('--parse_departure', required=False, help='Try to find and parse a departure file in the archive', action='store_true')
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--parse_arrival', action='store_true')
+    group.add_argument('--parse_departure', action='store_true')
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--gen_success', action='store_true')
